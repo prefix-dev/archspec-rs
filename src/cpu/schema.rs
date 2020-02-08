@@ -1,5 +1,5 @@
 //! Types and functions to manipulate the contents microarchitecture data file.
-//! 
+//!
 //! These are encoding the rules of the corresponding schema as Rust data types
 //! with the help of `serde` deserialization.
 

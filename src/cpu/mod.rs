@@ -3,8 +3,8 @@ mod detect;
 mod microarchitecture;
 mod schema;
 
-pub use microarchitecture::{
-    generic_microarchitecture, UnsupportedMicroarchitecture, version_components,
-    Microarchitecture, TARGETS,
-};
 pub use detect::host;
+pub use microarchitecture::{
+    generic_microarchitecture, version_components, Microarchitecture, UnsupportedMicroarchitecture,
+    TARGETS,
+};

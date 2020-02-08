@@ -15,7 +15,7 @@ type CompatibilityCheckBox = Box<dyn Fn(&RawInfoMap, &str) -> bool + Send + Sync
 lazy_static! {
     static ref COMPATIBILITY_CHECKS: HashMap<String, CompatibilityCheckBox> = {
         let mut m = HashMap::new();
-        
+
         m
     };
 }
