@@ -13,6 +13,7 @@ jobs:
     name: archspec
     runs-on: ${{ matrix.os }}
     strategy:
+      max-parallel: 4
       matrix:
         rust:
           - stable
