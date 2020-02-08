@@ -25,6 +25,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@master
+        with:
+          submodules: true
 
       - uses: actions-rs/toolchain@v1
         with:
