@@ -34,11 +34,14 @@ pub struct Microarchitecture {
     /// Optional information on how to tell different compilers how to optimize
     /// for this microarchitecture.
     pub(crate) compilers: Option<HashMap<String, CompilerSet>>,
+
+    /// Generation of the microarchitecture, if relevant.
+    pub(crate) generation: Option<usize>,
 }
 
 /// Compiler optimization for a particular compiler, either one for all flavours
 /// of the compiler or several indicating how to do it for particular version ranges.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum CompilerSet {
     /// Multiple entries (Compiler change options across versions).
@@ -50,7 +53,7 @@ pub enum CompilerSet {
 
 /// Indicates how to tell a particular compiler flavour how to optimize
 /// for an microarchitecture.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct Compiler {
     /// Indicates the versions of the compiler this applies to.
     pub(crate) versions: String,
@@ -64,7 +67,7 @@ pub struct Compiler {
 }
 
 /// Synthesised feature aliases derived from existing features or families.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct FeatureAlias {
     /// The reason for why this alias is defined.
     pub(crate) reason: Option<String>,
@@ -133,6 +136,7 @@ where
 }
 
 /// Deserialization helper to map from a single object or a sequence of objects to a sequence.
+#[allow(dead_code)]
 fn one_many_object<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
 where
     D: Deserializer<'de>,

@@ -13,11 +13,7 @@ fn raw_info_map() -> RawInfoMap {
 type CompatibilityCheckBox = Box<dyn Fn(&RawInfoMap, &str) -> bool + Send + Sync>;
 
 lazy_static! {
-    static ref COMPATIBILITY_CHECKS: HashMap<String, CompatibilityCheckBox> = {
-        let mut m = HashMap::new();
-
-        m
-    };
+    static ref COMPATIBILITY_CHECKS: HashMap<String, CompatibilityCheckBox> = { HashMap::new() };
 }
 
 /// Returns an unordered sequence of known micro-architectures that are

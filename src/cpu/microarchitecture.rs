@@ -1,3 +1,4 @@
+use super::schema::{Compiler, CompilerSet};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -6,16 +7,9 @@ pub struct Microarchitecture {
     name: String,
     parents: Vec<Arc<Microarchitecture>>,
     vendor: String,
-    features: Vec<String>,
-    compilers: HashMap<String, Compiler>,
+    features: HashSet<String>,
+    compilers: HashMap<String, Vec<Compiler>>,
     generation: usize,
-}
-
-#[derive(Debug, Eq, PartialEq)]
-pub(crate) struct Compiler {
-    version: String,
-    name: Option<String>,
-    flags: String,
 }
 
 impl Microarchitecture {
@@ -23,8 +17,8 @@ impl Microarchitecture {
         name: String,
         parents: Vec<Arc<Microarchitecture>>,
         vendor: String,
-        features: Vec<String>,
-        compilers: HashMap<String, Compiler>,
+        features: HashSet<String>,
+        compilers: HashMap<String, Vec<Compiler>>,
     ) -> Self {
         Microarchitecture::new_generation(name, parents, vendor, features, compilers, 0)
     }
@@ -33,8 +27,8 @@ impl Microarchitecture {
         name: String,
         parents: Vec<Arc<Microarchitecture>>,
         vendor: String,
-        features: Vec<String>,
-        compilers: HashMap<String, Compiler>,
+        features: HashSet<String>,
+        compilers: HashMap<String, Vec<Compiler>>,
         generation: usize,
     ) -> Self {
         Microarchitecture {
@@ -88,6 +82,38 @@ fn known_microarchitectures() -> HashMap<String, Arc<Microarchitecture>> {
 
         let vendor = values.vendor.clone();
         let features: HashSet<String> = values.features.iter().cloned().collect();
+        let compilers: HashMap<String, Vec<Compiler>> = values
+            .compilers
+            .as_ref()
+            .map(|compilers| {
+                compilers
+                    .iter()
+                    .map(|(vendor, set)| {
+                        (
+                            vendor.clone(),
+                            // normalize to a sequence of compiler definitions
+                            match set {
+                                CompilerSet::Several(cs) => cs.clone(),
+                                CompilerSet::Single(c) => vec![c.clone()],
+                            },
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_else(HashMap::new);
+        let generation = values.generation.unwrap_or(0);
+
+        targets.insert(
+            name.to_string(),
+            Arc::new(Microarchitecture::new_generation(
+                name.to_string(),
+                parents,
+                vendor,
+                features,
+                compilers,
+                generation,
+            )),
+        );
     };
 
     for name in schema.microarchitectures.keys() {
@@ -108,7 +134,7 @@ pub fn generic_microarchitecture(name: &str) -> Microarchitecture {
         name.to_string(),
         vec![],
         "generic".to_string(),
-        vec![],
+        HashSet::new(),
         HashMap::new(),
     )
 }
