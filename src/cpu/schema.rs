@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 
 /// Schema for microarchitecture definitions and feature aliases.
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct Schema {
     pub(crate) microarchitectures: HashMap<String, Microarchitecture>,
@@ -67,6 +68,7 @@ pub struct Compiler {
 }
 
 /// Synthesised feature aliases derived from existing features or families.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub struct FeatureAlias {
     /// The reason for why this alias is defined.
@@ -80,6 +82,7 @@ pub struct FeatureAlias {
 }
 
 /// Conversions that map some platform specific value to canonical values.
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct Conversions {
     pub(crate) description: String,
@@ -144,7 +147,7 @@ where
 {
     struct Vtor<T> {
         marker: PhantomData<fn() -> Vec<T>>,
-    };
+    }
 
     impl<T> Vtor<T> {
         fn new() -> Self {

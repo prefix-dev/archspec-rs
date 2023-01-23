@@ -114,7 +114,7 @@ fn known_microarchitectures() -> HashMap<String, Arc<Microarchitecture>> {
                 generation,
             )),
         );
-    };
+    }
 
     for name in schema.microarchitectures.keys() {
         if !known_targets.contains_key(name) {
@@ -150,7 +150,7 @@ pub fn version_components(version: &str) -> Option<(String, String)> {
 
 lazy_static! {
     pub static ref TARGETS: HashMap<String, Arc<Microarchitecture>> =
-        { known_microarchitectures() };
+        known_microarchitectures();
 }
 
 #[cfg(test)]
@@ -162,7 +162,8 @@ mod tests {
         }
 
         use super::version_components;
-        for (version, truth) in &[("1.2.3-hi.ho", Some(("1.2.3", "hi.ho")))] {
+        {
+            let (version, truth) = &("1.2.3-hi.ho", Some(("1.2.3", "hi.ho")));
             assert_eq!(version_components(version).as_ref().map(ref_tup), *truth);
         }
     }
