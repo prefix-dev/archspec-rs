@@ -4,12 +4,12 @@ use std::sync::Arc;
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Microarchitecture {
-    name: String,
-    parents: Vec<Arc<Microarchitecture>>,
-    vendor: String,
-    features: HashSet<String>,
-    compilers: HashMap<String, Vec<Compiler>>,
-    generation: usize,
+    pub(crate) name: String,
+    pub(crate) parents: Vec<Arc<Microarchitecture>>,
+    pub(crate) vendor: String,
+    pub(crate) features: HashSet<String>,
+    pub(crate) compilers: HashMap<String, Vec<Compiler>>,
+    pub(crate) generation: usize,
 }
 
 impl Microarchitecture {
@@ -64,7 +64,7 @@ fn known_microarchitectures() -> HashMap<String, Arc<Microarchitecture>> {
 
     fn fill_target_from_map(
         name: &str,
-        schema: &super::schema::Schema,
+        schema: &super::schema::MicroarchitecturesSchema,
         targets: &mut HashMap<String, Arc<Microarchitecture>>,
     ) {
         let data = &schema.microarchitectures;
@@ -114,7 +114,7 @@ fn known_microarchitectures() -> HashMap<String, Arc<Microarchitecture>> {
                 generation,
             )),
         );
-    };
+    }
 
     for name in schema.microarchitectures.keys() {
         if !known_targets.contains_key(name) {
@@ -122,9 +122,9 @@ fn known_microarchitectures() -> HashMap<String, Arc<Microarchitecture>> {
         }
     }
 
-    let host_platform = uname::uname().unwrap().machine;
-    let generic_ma = generic_microarchitecture(&host_platform).into();
-    known_targets.entry(host_platform).or_insert(generic_ma);
+    // let host_platform = uname::uname().unwrap().machine;
+    // let generic_ma = generic_microarchitecture(&host_platform).into();
+    // known_targets.entry(host_platform).or_insert(generic_ma);
 
     known_targets
 }
@@ -149,8 +149,7 @@ pub fn version_components(version: &str) -> Option<(String, String)> {
 }
 
 lazy_static! {
-    pub static ref TARGETS: HashMap<String, Arc<Microarchitecture>> =
-        { known_microarchitectures() };
+    pub static ref TARGETS: HashMap<String, Arc<Microarchitecture>> = known_microarchitectures();
 }
 
 #[cfg(test)]

@@ -1,7 +1,7 @@
-mod alias;
 mod detect;
 mod microarchitecture;
 mod schema;
+mod cpuid;
 
 pub use detect::host;
 pub use microarchitecture::{
