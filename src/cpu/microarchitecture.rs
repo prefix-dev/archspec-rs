@@ -41,6 +41,16 @@ impl Microarchitecture {
         }
     }
 
+    pub fn generic(name: &str) -> Microarchitecture {
+        Microarchitecture::new(
+            name.to_string(),
+            vec![],
+            "generic".to_string(),
+            HashSet::new(),
+            HashMap::new(),
+        )
+    }
+
     pub fn ancestors(&self) -> Vec<Arc<Microarchitecture>> {
         let mut v = self.parents.clone();
         for parent in &self.parents {
@@ -127,16 +137,6 @@ fn known_microarchitectures() -> HashMap<String, Arc<Microarchitecture>> {
     // known_targets.entry(host_platform).or_insert(generic_ma);
 
     known_targets
-}
-
-pub fn generic_microarchitecture(name: &str) -> Microarchitecture {
-    Microarchitecture::new(
-        name.to_string(),
-        vec![],
-        "generic".to_string(),
-        HashSet::new(),
-        HashMap::new(),
-    )
 }
 
 pub fn version_components(version: &str) -> Option<(String, String)> {
