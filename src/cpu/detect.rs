@@ -29,7 +29,9 @@ pub(crate) fn target_architecture_uname() -> std::io::Result<String> {
     let mut utsname = MaybeUninit::zeroed();
     let r = unsafe { libc::uname(utsname.as_mut_ptr()) };
     if r != 0 {
-        return Err(std::io::Error::last_os_error());
+        let err = std::io::Error::last_os_error();
+        dbg!("uname failed to run with error: {:?}", &err);
+        return Err(err);
     }
 
     let utsname = unsafe { utsname.assume_init() };
@@ -373,7 +375,10 @@ impl<S: SysCtlProvider, C: CpuIdProvider> TargetDetector<S, C> {
             }
             "macos" => detect_macos(target_arch, &self.sysctl_provider),
             "windows" => detect_windows(target_arch, &self.cpuid_provider)?,
-            _ => return Err(UnsupportedMicroarchitecture),
+            _ => {
+                dbg!("unsupported operating system");
+                return Err(UnsupportedMicroarchitecture);
+            }
         };
 
         // Determine compatible targets based on the architecture.
@@ -394,6 +399,7 @@ impl<S: SysCtlProvider, C: CpuIdProvider> TargetDetector<S, C> {
             .sorted_by(|a, b| compare_microarchitectures(a, b))
             .last()
         else {
+            dbg!("no matching candidates");
             // If there is no matching generic candidate then
             return Err(UnsupportedMicroarchitecture);
         };
