@@ -245,6 +245,7 @@ fn known_microarchitectures() -> HashMap<String, Arc<Microarchitecture>> {
     }
 
     if let Ok(host_platform) = target_architecture_uname() {
+        dbg!("adding host platform", &host_platform);
         known_targets
             .entry(host_platform.to_string())
             .or_insert_with(|| Arc::new(Microarchitecture::generic(&host_platform)));
