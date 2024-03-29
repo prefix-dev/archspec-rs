@@ -7,7 +7,7 @@ use std::sync::Arc;
 fn detect() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
     cfg_if::cfg_if! {
         if #[cfg(target_arch = "x86_64")] {
-            let cpuid = CpuId::host();
+            let cpuid = super::cpuid::CpuId::host();
             return Ok(Microarchitecture {
                 name: String::new(),
                 parents: vec![],
@@ -179,7 +179,7 @@ fn detect() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
             .iter()
         {
             if features.contains(darwin_flag) {
-                features.extend(linux_flag.split_whitespace())
+                features.extend(linux_flag.split_whitespace().map(|s| s.to_string()))
             }
         }
 
@@ -347,6 +347,7 @@ fn compatible_microarchitectures_for_ppc64(
         .collect()
 }
 
+#[allow(unused)]
 fn compatible_microarchitectures_for_x86_64(
     detected_info: &Microarchitecture,
 ) -> Vec<Arc<Microarchitecture>> {
