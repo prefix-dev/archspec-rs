@@ -7,6 +7,7 @@ use serde::de;
 use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::sync::OnceLock;
 
 /// Schema for microarchitecture definitions and feature aliases.
 #[derive(Debug, Deserialize)]
@@ -14,6 +15,19 @@ pub struct MicroarchitecturesSchema {
     pub(crate) microarchitectures: HashMap<String, Microarchitecture>,
     pub(crate) feature_aliases: HashMap<String, FeatureAlias>,
     pub(crate) conversions: Conversions,
+}
+
+impl MicroarchitecturesSchema {
+    pub fn schema() -> &'static MicroarchitecturesSchema {
+        static SCHEMA: OnceLock<MicroarchitecturesSchema> = OnceLock::new();
+        SCHEMA.get_or_init(|| {
+            serde_json::from_str(include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/json/cpu/microarchitectures.json"
+            )))
+            .expect("Failed to load microarchitectures.json")
+        })
+    }
 }
 
 /// Defines the attributes and requirements of a microarchitecture.
@@ -98,6 +112,19 @@ pub struct CpuIdSchema {
     pub(crate) flags: Vec<CpuIdFlags>,
     #[serde(rename = "extension-flags")]
     pub(crate) extension_flags: Vec<CpuIdFlags>,
+}
+
+impl CpuIdSchema {
+    pub fn schema() -> &'static CpuIdSchema {
+        static SCHEMA: OnceLock<CpuIdSchema> = OnceLock::new();
+        SCHEMA.get_or_init(|| {
+            serde_json::from_str(include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/json/cpu/cpuid.json"
+            )))
+            .expect("Failed to load cpuid.json")
+        })
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -232,39 +259,17 @@ where
     deserializer.deserialize_any(Vtor::new())
 }
 
-lazy_static! {
-    /// Underlying dataset from the microarchitectures archspec JSON file.
-    pub static ref TARGETS_JSON: MicroarchitecturesSchema = {
-        serde_json::from_str(include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/json/cpu/microarchitectures.json"
-        )))
-        .expect("Failed to load microarchitectures.json")
-    };
-
-    /// Underlying dataset from the cpuid archspec JSON file.
-    pub static ref CPUID_JSON: CpuIdSchema = {
-        serde_json::from_str(include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/json/cpu/cpuid.json"
-        )))
-        .expect("Failed to load microarchitectures.json")
-    };
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn show_microarchitecture_json() {
-        let schema: &MicroarchitecturesSchema = &TARGETS_JSON;
-        println!("{:#?}", schema);
+        println!("{:#?}", MicroarchitecturesSchema::schema());
     }
 
     #[test]
     fn show_cpuid_json() {
-        let schema: &CpuIdSchema = &CPUID_JSON;
-        println!("{:#?}", schema);
+        println!("{:#?}", CpuIdSchema::schema());
     }
 }

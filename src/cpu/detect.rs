@@ -1,6 +1,5 @@
 use super::microarchitecture::{Microarchitecture, UnsupportedMicroarchitecture};
-use crate::cpu::cpuid::CpuId;
-use crate::cpu::schema::TARGETS_JSON;
+use crate::cpu::schema::MicroarchitecturesSchema;
 use itertools::Itertools;
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -47,7 +46,7 @@ fn uname_machine() -> std::io::Result<String> {
 fn detect() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
     // Read the CPU information from /proc/cpuinfo
     let mut data = HashMap::new();
-    let mut lines = std::fs::File::open("/proc/cpuinfo")
+    let lines = std::fs::File::open("/proc/cpuinfo")
         .map(BufReader::new)
         .map_err(|_| UnsupportedMicroarchitecture)?
         .lines();
@@ -91,7 +90,7 @@ fn detect() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
             // https://developer.arm.com/docs/ddi0487/latest/arm-architecture-reference-manual-armv8-for-armv8-a-architecture-profile
             // https://github.com/gcc-mirror/gcc/blob/master/gcc/config/aarch64/aarch64-cores.def
             // https://patchwork.kernel.org/patch/10524949/
-            TARGETS_JSON
+            MicroarchitecturesSchema::schema()
                 .conversions
                 .arm_vendors
                 .get(implementer)
@@ -135,6 +134,65 @@ fn detect() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
     }
 
     Ok(Microarchitecture::generic(&architecture))
+}
+
+#[cfg(target_os = "macos")]
+fn detect() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
+    use sysctl::Sysctl;
+
+    let Ok(architecture) = uname_machine() else {
+        return Err(UnsupportedMicroarchitecture);
+    };
+
+    if architecture == "x86_64" {
+        let cpu_features = sysctl::Ctl::new("machdep.cpu.features")
+            .and_then(|ctl| ctl.value())
+            .map(|v| v.to_string().to_lowercase())
+            .unwrap_or_default();
+        let cpu_leaf7_features = sysctl::Ctl::new("machdep.cpu.leaf7_features")
+            .and_then(|ctl| ctl.value())
+            .map(|v| v.to_string().to_lowercase())
+            .unwrap_or_default();
+        let vendor = sysctl::Ctl::new("machdep.cpu.vendor")
+            .and_then(|ctl| ctl.value())
+            .map(|v| v.to_string().to_lowercase())
+            .unwrap_or_default();
+
+        let mut features = cpu_features
+            .split_whitespace()
+            .chain(cpu_leaf7_features.split_whitespace())
+            .map(|s| s.to_string())
+            .collect::<HashSet<String>>();
+
+        // Flags detected on Darwin turned to their linux counterpart.
+        for (darwin_flag, linux_flag) in TARGETS_JSON.conversions.darwin_flags.iter() {
+            if features.contains(darwin_flag) {
+                features.extend(linux_flag.split_whitespace())
+            }
+        }
+
+        return Ok(Microarchitecture {
+            vendor: "apple".to_string(),
+            features,
+            ..Microarchitecture::generic("")
+        });
+    }
+
+    let model = match sysctl::Ctl::new("machdep.cpu.vendor")
+        .and_then(|ctl| ctl.value())
+        .map(|v| v.to_string().to_lowercase())
+        .ok()
+    {
+        Some(model) if model.contains("m2") => String::from("m2"),
+        Some(model) if model.contains("m1") => String::from("m1"),
+        Some(model) if model.contains("apple") => String::from("m1"),
+        _ => String::from("unknown"),
+    };
+
+    Ok(Microarchitecture {
+        vendor: String::from("apple"),
+        ..Microarchitecture::generic(&model)
+    })
 }
 
 /// Construct a generic [`Microarchitecture`] based on the architecture of the host.

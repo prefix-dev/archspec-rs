@@ -181,7 +181,7 @@ pub struct UnsupportedMicroarchitecture;
 
 fn known_microarchitectures() -> HashMap<String, Arc<Microarchitecture>> {
     let mut known_targets: HashMap<String, Arc<Microarchitecture>> = HashMap::new();
-    let schema = &super::schema::TARGETS_JSON;
+    let schema = super::schema::MicroarchitecturesSchema::schema();
 
     fn fill_target_from_map(
         name: &str,
@@ -253,28 +253,4 @@ fn known_microarchitectures() -> HashMap<String, Arc<Microarchitecture>> {
         .or_insert_with(|| Arc::new(Microarchitecture::generic(host_platform)));
 
     known_targets
-}
-
-pub fn version_components(version: &str) -> Option<(String, String)> {
-    let re = regex::Regex::new(r"([\d.]*)(-?)(.*)").unwrap();
-    let caps = re.captures(version)?;
-    let version_number = caps.get(1)?.as_str().to_string();
-    let suffix = caps.get(3)?.as_str().to_string();
-
-    Some((version_number, suffix))
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn version_components() {
-        fn ref_tup(t: &(String, String)) -> (&str, &str) {
-            (&t.0, &t.1)
-        }
-
-        use super::version_components;
-        for (version, truth) in &[("1.2.3-hi.ho", Some(("1.2.3", "hi.ho")))] {
-            assert_eq!(version_components(version).as_ref().map(ref_tup), *truth);
-        }
-    }
 }

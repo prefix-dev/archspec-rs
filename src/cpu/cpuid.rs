@@ -1,4 +1,4 @@
-use crate::cpu::schema::{CpuRegister, CPUID_JSON};
+use crate::cpu::schema::{CpuIdSchema, CpuRegister};
 use std::arch::x86_64::__cpuid_count;
 use std::collections::HashSet;
 use std::ffi::CStr;
@@ -18,9 +18,10 @@ pub(crate) struct CpuId {
 
 impl CpuId {
     fn detect() -> Self {
+        let schema = CpuIdSchema::schema();
+
         // Read the vendor information
-        let registers =
-            unsafe { __cpuid_count(CPUID_JSON.vendor.input.eax, CPUID_JSON.vendor.input.ecx) };
+        let registers = unsafe { __cpuid_count(schema.vendor.input.eax, schema.vendor.input.ecx) };
         let highest_basic_support = registers.eax;
         let vendor_bytes: [u8; 12] =
             unsafe { std::mem::transmute([registers.ebx, registers.edx, registers.ecx]) };
@@ -29,19 +30,19 @@ impl CpuId {
         // Read the highest_extension_support
         let registers = unsafe {
             __cpuid_count(
-                CPUID_JSON.highest_extension_support.input.eax,
-                CPUID_JSON.highest_extension_support.input.ecx,
+                schema.highest_extension_support.input.eax,
+                schema.highest_extension_support.input.ecx,
             )
         };
         let highest_extension_support = registers.eax;
 
         // Read feature flags
         let mut features = HashSet::new();
-        let supported_flags = CPUID_JSON
+        let supported_flags = schema
             .flags
             .iter()
             .filter(|flags| flags.input.eax <= highest_basic_support);
-        let supported_extensions = CPUID_JSON
+        let supported_extensions = schema
             .extension_flags
             .iter()
             .filter(|flags| flags.input.eax <= highest_extension_support);
