@@ -38,6 +38,11 @@ fn target_architecture_uname() -> std::io::Result<String> {
     Ok(machine.to_string_lossy().into_owned())
 }
 
+#[cfg(target_os = "windows")]
+fn target_architecture_uname() -> std::io::Result<String> {
+    unimplemented!("uname is not implemented for Windows")
+}
+
 pub(crate) struct ProcCpuInfo {
     cpu_info: HashMap<String, String>,
 }
