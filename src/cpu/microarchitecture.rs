@@ -1,4 +1,4 @@
-use super::schema::{Compiler, CompilerSet};
+use crate::schema::{Compiler, CompilerSet};
 use itertools::Itertools;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Formatter};
@@ -95,7 +95,7 @@ impl Microarchitecture {
     pub fn known_targets() -> &'static HashMap<String, Arc<Microarchitecture>> {
         static KNOWN_TARGETS: std::sync::OnceLock<HashMap<String, Arc<Microarchitecture>>> =
             std::sync::OnceLock::new();
-        KNOWN_TARGETS.get_or_init(|| known_microarchitectures())
+        KNOWN_TARGETS.get_or_init(known_microarchitectures)
     }
 
     /// Returns all the ancestors of this micro architecture.
@@ -105,7 +105,7 @@ impl Microarchitecture {
             for parent in &self.parents {
                 let new_ancestors = parent
                     .ancestors()
-                    .into_iter()
+                    .iter()
                     .filter(|a| !v.contains(a))
                     .cloned()
                     .collect_vec();
@@ -181,11 +181,11 @@ pub struct UnsupportedMicroarchitecture;
 
 fn known_microarchitectures() -> HashMap<String, Arc<Microarchitecture>> {
     let mut known_targets: HashMap<String, Arc<Microarchitecture>> = HashMap::new();
-    let schema = super::schema::MicroarchitecturesSchema::schema();
+    let schema = crate::schema::MicroarchitecturesSchema::schema();
 
     fn fill_target_from_map(
         name: &str,
-        schema: &super::schema::MicroarchitecturesSchema,
+        schema: &crate::schema::MicroarchitecturesSchema,
         targets: &mut HashMap<String, Arc<Microarchitecture>>,
     ) {
         let data = &schema.microarchitectures;
@@ -221,7 +221,7 @@ fn known_microarchitectures() -> HashMap<String, Arc<Microarchitecture>> {
                     })
                     .collect()
             })
-            .unwrap_or_else(HashMap::new);
+            .unwrap_or_default();
         let generation = values.generation.unwrap_or(0);
 
         targets.insert(

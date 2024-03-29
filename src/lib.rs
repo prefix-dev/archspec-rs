@@ -9,3 +9,4 @@
 //! [archspec.readthedocs.org](https://archspec.readthedocs.org) for additional context.
 
 pub mod cpu;
+pub mod schema;

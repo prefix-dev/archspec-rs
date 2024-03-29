@@ -1,5 +1,5 @@
 use super::microarchitecture::{Microarchitecture, UnsupportedMicroarchitecture};
-use crate::cpu::schema::MicroarchitecturesSchema;
+use crate::schema::MicroarchitecturesSchema;
 use itertools::Itertools;
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -23,8 +23,16 @@ fn detect() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
                 generation: 0,
                 ancestors: Default::default(),
             });
+        } else if #[cfg(target_arch = "aarch64")] {
+            return Ok(Microarchitecture::generic("aarch64"));
+        } else if #[cfg(target_arch = "powerpc64le")] {
+            return Ok(Microarchitecture::generic("ppc64le"));
+        } else if #[cfg(target_arch = "powerpc64")] {
+            return Ok(Microarchitecture::generic("ppc64"));
+        } else if #[cfg(target_arch = "riscv64")] {
+            return Ok(Microarchitecture::generic("riscv64"));
         } else {
-            detect_generic_arch()
+            return Err(UnsupportedMicroarchitecture);
         }
     }
 }
@@ -195,25 +203,6 @@ fn detect() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
     })
 }
 
-/// Construct a generic [`Microarchitecture`] based on the architecture of the host.
-pub(crate) fn detect_generic_arch() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
-    cfg_if::cfg_if! {
-        if #[cfg(target_arch = "aarch64")] {
-            return Ok(Microarchitecture::generic("aarch64"));
-        } else if #[cfg(target_arch = "powerpc64le")] {
-            return Ok(Microarchitecture::generic("ppc64le"));
-        } else if #[cfg(target_arch = "powerpc64")] {
-            return Ok(Microarchitecture::generic("ppc64"));
-        } else if #[cfg(target_arch = "riscv64")] {
-            return Ok(Microarchitecture::generic("riscv64"));
-        } else if #[cfg(target_arch = "x86_64")] {
-            return Ok(Microarchitecture::generic("x86_64"));
-        } else {
-            return Err(UnsupportedMicroarchitecture);
-        }
-    }
-}
-
 fn compare_microarchitectures(a: &Microarchitecture, b: &Microarchitecture) -> Ordering {
     let ancestors_a = a.ancestors().len();
     let ancestors_b = b.ancestors().len();
@@ -238,7 +227,7 @@ pub fn host() -> Result<Arc<Microarchitecture>, UnsupportedMicroarchitecture> {
     let Some(best_generic_candidate) = compatible_targets
         .iter()
         .filter(|target| target.vendor == "generic")
-        .sorted_by(|a, b| compare_microarchitectures(&a, &b))
+        .sorted_by(|a, b| compare_microarchitectures(a, b))
         .last()
     else {
         // If there is no matching generic candidate then
@@ -250,19 +239,20 @@ pub fn host() -> Result<Arc<Microarchitecture>, UnsupportedMicroarchitecture> {
     // reasonably performant architecture
     let best_candidates = compatible_targets
         .iter()
-        .filter(|target| target.is_strict_superset(&best_generic_candidate))
+        .filter(|target| target.is_strict_superset(best_generic_candidate))
         .collect_vec();
 
     // Resort the matching candidates and fall back to the best generic candidate if there is no
     // matching non-generic candidate.
     Ok(best_candidates
         .into_iter()
-        .sorted_by(|a, b| compare_microarchitectures(&a, &b))
+        .sorted_by(|a, b| compare_microarchitectures(a, b))
         .last()
         .unwrap_or(best_generic_candidate)
         .clone())
 }
 
+#[allow(unused)]
 fn compatible_microarchitectures_for_aarch64(
     detected_info: &Microarchitecture,
     is_macos: bool,
@@ -314,9 +304,9 @@ fn compatible_microarchitectures_for_host(
         if #[cfg(target_arch = "aarch64")] {
             compatible_microarchitectures_for_aarch64(detected_info)
         } else if #[cfg(target_arch="powerpc64le")] {
-            compatible_microarchitectures_for_ppc64(detected_info, PowerPc64::PowerPc64Le)
+            compatible_microarchitectures_for_ppc64(detected_info, true)
         } else if #[cfg(target_arch="powerpc64")] {
-            compatible_microarchitectures_for_ppc64(detected_info, PowerPc64::PowerPc64)
+            compatible_microarchitectures_for_ppc64(detected_info, false)
         } else if #[cfg(target_arch="riscv64")] {
             compatible_microarchitectures_for_riscv64(detected_info)
         } else if #[cfg(target_arch="x86_64")] {
@@ -327,21 +317,14 @@ fn compatible_microarchitectures_for_host(
     }
 }
 
-enum PowerPc64 {
-    PowerPc64,
-    PowerPc64Le,
-}
-
+#[allow(unused)]
 fn compatible_microarchitectures_for_ppc64(
     detected_info: &Microarchitecture,
-    power_pc64: PowerPc64,
+    little_endian: bool,
 ) -> Vec<Arc<Microarchitecture>> {
     let targets = Microarchitecture::known_targets();
 
-    let root_arch = match power_pc64 {
-        PowerPc64::PowerPc64 => "ppc64",
-        PowerPc64::PowerPc64Le => "ppc64le",
-    };
+    let root_arch = if little_endian { "ppc64le" } else { "ppc64" };
 
     // Get the root micro-architecture.
     let Some(arch_root) = targets.get(root_arch) else {
@@ -353,7 +336,7 @@ fn compatible_microarchitectures_for_ppc64(
     targets
         .values()
         .filter(|target| {
-            (target.as_ref() == arch_root.as_ref() || target.decendent_of(&arch_root))
+            (target.as_ref() == arch_root.as_ref() || target.decendent_of(arch_root))
                 && target.generation <= detected_info.generation
         })
         .cloned()
@@ -375,13 +358,15 @@ fn compatible_microarchitectures_for_x86_64(
     targets
         .values()
         .filter(|target| {
-            (target.as_ref() == arch_root.as_ref() || target.decendent_of(&arch_root))
+            (target.as_ref() == arch_root.as_ref() || target.decendent_of(arch_root))
                 && (target.vendor == detected_info.vendor || target.vendor == "generic")
                 && target.features.is_subset(&detected_info.features)
         })
         .cloned()
         .collect()
 }
+
+#[allow(unused)]
 
 fn compatible_microarchitectures_for_riscv64(
     detected_info: &Microarchitecture,
@@ -398,7 +383,7 @@ fn compatible_microarchitectures_for_riscv64(
     targets
         .values()
         .filter(|target| {
-            (target.as_ref() == arch_root.as_ref() || target.decendent_of(&arch_root))
+            (target.as_ref() == arch_root.as_ref() || target.decendent_of(arch_root))
                 && (target.name == detected_info.name || target.vendor == "generic")
         })
         .cloned()
