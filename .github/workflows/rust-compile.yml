@@ -43,13 +43,16 @@ jobs:
   build:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    needs: [ format_and_lint ]
+    needs: [ format ]
     strategy:
       fail-fast: false
       matrix:
         include:
           - { name: "Linux-x86_64",       target: x86_64-unknown-linux-musl,  os: ubuntu-20.04 }
           - { name: "Linux-aarch64",      target: aarch64-unknown-linux-musl, os: ubuntu-latest }
+          - { name: "Linux-powerpc64le",  target: powerpc64le-unknown-linux-gnu, os: ubuntu-latest }
+          - { name: "Linux-powerpc64",    target: powerpc64-unknown-linux-gnu, os: ubuntu-latest }
+          - { name: "Linux-riscv64gc",    target: riscv64gc-unknown-linux-gnu, os: ubuntu-latest }
 
           - { name: "macOS",              target: x86_64-apple-darwin,        os: macOS-latest }
           - { name: "macOS-arm",          target: aarch64-apple-darwin,       os: macOS-14 }
