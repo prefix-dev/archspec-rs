@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use crate::schema::{CpuIdSchema, CpuRegister};
+use itertools::chain;
 use std::collections::HashSet;
 use std::ffi::CStr;
 
@@ -84,8 +85,12 @@ impl CpuId {
         // Read the vendor information
         let registers = provider.cpuid(schema.vendor.input.eax, schema.vendor.input.ecx);
         let highest_basic_support = registers.eax;
-        let vendor_bytes: [u8; 12] =
-            unsafe { std::mem::transmute([registers.ebx, registers.edx, registers.ecx]) };
+        let vendor_bytes: Vec<_> = chain!(
+            registers.ebx.to_le_bytes(),
+            registers.edx.to_le_bytes(),
+            registers.ecx.to_le_bytes()
+        )
+        .collect();
         let vendor = String::from_utf8_lossy(&vendor_bytes).into_owned();
 
         // Read the highest_extension_support
@@ -128,22 +133,21 @@ impl CpuId {
                 provider.cpuid(0x80000004, 0),
             );
 
-            let vendor_bytes: [u8; 48] = unsafe {
-                std::mem::transmute([
-                    registers.0.eax,
-                    registers.0.ebx,
-                    registers.0.ecx,
-                    registers.0.edx,
-                    registers.1.eax,
-                    registers.1.ebx,
-                    registers.1.ecx,
-                    registers.1.edx,
-                    registers.2.eax,
-                    registers.2.ebx,
-                    registers.2.ecx,
-                    registers.2.edx,
-                ])
-            };
+            let vendor_bytes: Vec<_> = chain!(
+                registers.0.eax.to_le_bytes(),
+                registers.0.ebx.to_le_bytes(),
+                registers.0.ecx.to_le_bytes(),
+                registers.0.edx.to_le_bytes(),
+                registers.1.eax.to_le_bytes(),
+                registers.1.ebx.to_le_bytes(),
+                registers.1.ecx.to_le_bytes(),
+                registers.1.edx.to_le_bytes(),
+                registers.2.eax.to_le_bytes(),
+                registers.2.ebx.to_le_bytes(),
+                registers.2.ecx.to_le_bytes(),
+                registers.2.edx.to_le_bytes(),
+            )
+            .collect();
             let brand_string = match CStr::from_bytes_until_nul(&vendor_bytes) {
                 Ok(cstr) => cstr.to_string_lossy(),
                 Err(_) => String::from_utf8_lossy(&vendor_bytes),

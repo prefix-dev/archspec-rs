@@ -308,7 +308,7 @@ impl<S: SysCtlProvider, C: CpuIdProvider> TargetDetector<S, C> {
         }
     }
 
-    pub fn with_cpyid_provider<O: CpuIdProvider>(self, cpuid_provider: O) -> TargetDetector<S, O> {
+    pub fn with_cpuid_provider<O: CpuIdProvider>(self, cpuid_provider: O) -> TargetDetector<S, O> {
         TargetDetector {
             target_os: self.target_os,
             target_arch: self.target_arch,
@@ -345,7 +345,6 @@ impl<S: SysCtlProvider, C: CpuIdProvider> TargetDetector<S, C> {
         // Determine the architecture of the machine based on the operating system.
         let target_arch_uname;
         let target_arch = match (os, &self.target_arch) {
-            ("linux" | "windows", Some(arch)) => arch.as_str(),
             ("linux", None) => {
                 target_arch_uname =
                     target_architecture_uname().map_err(|_| UnsupportedMicroarchitecture)?;
@@ -365,7 +364,8 @@ impl<S: SysCtlProvider, C: CpuIdProvider> TargetDetector<S, C> {
                     "x86_64"
                 }
             }
-            _ => target_architecture_compiler(),
+            (_, Some(arch)) => arch.as_str(),
+            (_, None) => target_architecture_compiler(),
         };
 
         // Detect the architecture based on the operating system.
@@ -600,7 +600,7 @@ mod tests {
                 .detect(),
             "windows" => detector
                 .with_target_os("windows")
-                .with_cpyid_provider(MockCpuIdProvider::from_str(&contents))
+                .with_cpuid_provider(MockCpuIdProvider::from_str(&contents))
                 .detect(),
             _ => panic!("Unsupported platform: {}", platform),
         };
