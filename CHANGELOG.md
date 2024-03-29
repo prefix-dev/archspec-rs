@@ -10,13 +10,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - *(tests)* target tests
-
-### Fixed
-- remove dbg
-- unsupported arch
-- unsupported debug
-- unsupported arch
-- force little endian
-- windows
-- unused variable
-- newline at end of file
