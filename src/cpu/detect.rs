@@ -184,13 +184,13 @@ fn detect() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
         }
 
         return Ok(Microarchitecture {
-            vendor: "apple".to_string(),
+            vendor,
             features,
             ..Microarchitecture::generic("")
         });
     }
 
-    let model = match sysctl::Ctl::new("machdep.cpu.vendor")
+    let model = match sysctl::Ctl::new("machdep.cpu.brand_string")
         .and_then(|ctl| ctl.value())
         .map(|v| v.to_string().to_lowercase())
         .ok()
@@ -202,7 +202,7 @@ fn detect() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
     };
 
     Ok(Microarchitecture {
-        vendor: String::from("apple"),
+        vendor: String::from("Apple"),
         ..Microarchitecture::generic(&model)
     })
 }
