@@ -27,7 +27,7 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - run: cargo rustdoc --all-features -- -D warnings -W unreachable-pub
 
-  format_and_lint:
+  format:
     name: Format and Lint
     runs-on: ubuntu-latest
     steps:
@@ -39,8 +39,6 @@ jobs:
           components: clippy, rustfmt
       - name: Run rustfmt
         uses: actions-rust-lang/rustfmt@v1
-      - name: Run clippy
-        run: cargo clippy
 
   build:
     name: ${{ matrix.name }}
@@ -69,6 +67,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - name: Run clippy
+        run: cargo clippy
+
       - name: "Install cargo nextest"
         uses: taiki-e/install-action@v2
         with:
@@ -76,4 +77,4 @@ jobs:
 
       - name: "Cargo nextest"
         run: |
-          cargo nextest run --status-level skip --failure-output immediate-final --no-fail-fast --final-status-level slow
+          cargo nextest run --no-capture --status-level skip --failure-output immediate-final --no-fail-fast --final-status-level slow
