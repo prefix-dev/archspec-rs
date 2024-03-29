@@ -1,7 +1,13 @@
 use super::microarchitecture::{Microarchitecture, UnsupportedMicroarchitecture};
 use crate::cpu::cpuid::CpuId;
+use crate::cpu::schema::TARGETS_JSON;
 use itertools::Itertools;
 use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::ffi::CStr;
+use std::io;
+use std::io::{BufRead, BufReader};
+use std::mem::MaybeUninit;
 use std::sync::Arc;
 
 #[cfg(target_os = "windows")]
@@ -22,6 +28,113 @@ fn detect() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
             detect_generic_arch()
         }
     }
+}
+
+#[cfg(not(any(target_os = "windows")))]
+fn uname_machine() -> std::io::Result<String> {
+    let mut utsname = MaybeUninit::zeroed();
+    let r = unsafe { libc::uname(utsname.as_mut_ptr()) };
+    if r != 0 {
+        return Err(io::Error::last_os_error());
+    }
+
+    let utsname = unsafe { utsname.assume_init() };
+    let machine = unsafe { CStr::from_ptr(utsname.machine.as_ptr()) };
+    Ok(machine.to_string_lossy().into_owned())
+}
+
+#[cfg(target_os = "linux")]
+fn detect() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
+    // Read the CPU information from /proc/cpuinfo
+    let mut data = HashMap::new();
+    let mut lines = std::fs::File::open("/proc/cpuinfo")
+        .map(BufReader::new)
+        .map_err(|_| UnsupportedMicroarchitecture)?
+        .lines();
+    for line in lines {
+        let Ok(line) = line else {
+            continue;
+        };
+        let Some((key, value)) = line.split_once(':') else {
+            // If there is no seperator and info was already populated, break because we are on a
+            // blank line seperating CPUs.
+            if !data.is_empty() {
+                break;
+            }
+            continue;
+        };
+        data.insert(key.trim().to_string(), value.trim().to_string());
+    }
+
+    let architecture = uname_machine().map_err(|_| UnsupportedMicroarchitecture)?;
+    if architecture == "x86_64" {
+        return Ok(Microarchitecture {
+            vendor: data
+                .remove("vendor_id")
+                .unwrap_or_else(|| String::from("generic")),
+            features: data
+                .remove("flags")
+                .unwrap_or_default()
+                .split(' ')
+                .map(|s| s.to_string())
+                .collect(),
+            ..Microarchitecture::generic("")
+        });
+    }
+
+    if architecture == "aarch64" {
+        let vendor = if let Some(implementer) = data.get("CPU implementer") {
+            // Mapping numeric codes to vendor (ARM). This list is a merge from
+            // different sources:
+            //
+            // https://github.com/karelzak/util-linux/blob/master/sys-utils/lscpu-arm.c
+            // https://developer.arm.com/docs/ddi0487/latest/arm-architecture-reference-manual-armv8-for-armv8-a-architecture-profile
+            // https://github.com/gcc-mirror/gcc/blob/master/gcc/config/aarch64/aarch64-cores.def
+            // https://patchwork.kernel.org/patch/10524949/
+            TARGETS_JSON
+                .conversions
+                .arm_vendors
+                .get(implementer)
+                .cloned()
+                .unwrap_or_else(|| "generic".to_string())
+        } else {
+            String::from("generic")
+        };
+
+        return Ok(Microarchitecture {
+            vendor,
+            features: data
+                .remove("Features")
+                .unwrap_or_default()
+                .split(' ')
+                .map(|s| s.to_string())
+                .collect(),
+            ..Microarchitecture::generic("")
+        });
+    }
+
+    if architecture == "ppc64" || architecture == "ppc64le" {
+        let cpu = data.remove("cpu").unwrap_or_default();
+        let generation = cpu
+            .strip_prefix("POWER")
+            .and_then(|rest| rest.parse().ok())
+            .unwrap_or(0);
+        return Ok(Microarchitecture {
+            generation,
+            ..Microarchitecture::generic("")
+        });
+    }
+
+    if architecture == "riscv64" {
+        let uarch = match data.get("uarch").map(String::as_str) {
+            Some("sifive,u74-mc") => "u74mc",
+            Some(uarch) => uarch,
+            None => "riscv64",
+        };
+        return Ok(Microarchitecture::generic(uarch));
+    }
+
+    Ok(Microarchitecture::generic(&architecture))
 }
 
 /// Construct a generic [`Microarchitecture`] based on the architecture of the host.
