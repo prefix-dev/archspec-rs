@@ -1,12 +1,6 @@
 use super::microarchitecture::{Microarchitecture, UnsupportedMicroarchitecture};
-use crate::schema::MicroarchitecturesSchema;
 use itertools::Itertools;
 use std::cmp::Ordering;
-use std::collections::HashMap;
-use std::ffi::CStr;
-use std::io;
-use std::io::{BufRead, BufReader};
-use std::mem::MaybeUninit;
 use std::sync::Arc;
 
 #[cfg(target_os = "windows")]
@@ -39,10 +33,13 @@ fn detect() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
 
 #[cfg(not(any(target_os = "windows")))]
 fn uname_machine() -> std::io::Result<String> {
+    use std::ffi::CStr;
+    use std::mem::MaybeUninit;
+
     let mut utsname = MaybeUninit::zeroed();
     let r = unsafe { libc::uname(utsname.as_mut_ptr()) };
     if r != 0 {
-        return Err(io::Error::last_os_error());
+        return Err(std::io::Error::last_os_error());
     }
 
     let utsname = unsafe { utsname.assume_init() };
@@ -52,8 +49,10 @@ fn uname_machine() -> std::io::Result<String> {
 
 #[cfg(target_os = "linux")]
 fn detect() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
+    use std::io::{BufRead, BufReader};
+
     // Read the CPU information from /proc/cpuinfo
-    let mut data = HashMap::new();
+    let mut data = std::collections::HashMap::new();
     let lines = std::fs::File::open("/proc/cpuinfo")
         .map(BufReader::new)
         .map_err(|_| UnsupportedMicroarchitecture)?
@@ -98,7 +97,7 @@ fn detect() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
             // https://developer.arm.com/docs/ddi0487/latest/arm-architecture-reference-manual-armv8-for-armv8-a-architecture-profile
             // https://github.com/gcc-mirror/gcc/blob/master/gcc/config/aarch64/aarch64-cores.def
             // https://patchwork.kernel.org/patch/10524949/
-            MicroarchitecturesSchema::schema()
+            crate::schema::MicroarchitecturesSchema::schema()
                 .conversions
                 .arm_vendors
                 .get(implementer)
@@ -146,6 +145,7 @@ fn detect() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
 
 #[cfg(target_os = "macos")]
 fn detect() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
+    use std::collections::HashSet;
     use sysctl::Sysctl;
 
     let Ok(architecture) = uname_machine() else {
@@ -173,7 +173,11 @@ fn detect() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
             .collect::<HashSet<String>>();
 
         // Flags detected on Darwin turned to their linux counterpart.
-        for (darwin_flag, linux_flag) in TARGETS_JSON.conversions.darwin_flags.iter() {
+        for (darwin_flag, linux_flag) in crate::schema::MicroarchitecturesSchema::schema()
+            .conversions
+            .darwin_flags
+            .iter()
+        {
             if features.contains(darwin_flag) {
                 features.extend(linux_flag.split_whitespace())
             }
@@ -302,7 +306,7 @@ fn compatible_microarchitectures_for_host(
 ) -> Vec<Arc<Microarchitecture>> {
     cfg_if::cfg_if! {
         if #[cfg(target_arch = "aarch64")] {
-            compatible_microarchitectures_for_aarch64(detected_info)
+            compatible_microarchitectures_for_aarch64(detected_info, std::env::consts::OS == "macos")
         } else if #[cfg(target_arch="powerpc64le")] {
             compatible_microarchitectures_for_ppc64(detected_info, true)
         } else if #[cfg(target_arch="powerpc64")] {

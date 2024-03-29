@@ -1,4 +1,4 @@
-use crate::cpu::schema::{CpuIdSchema, CpuRegister};
+use crate::schema::{CpuIdSchema, CpuRegister};
 use std::arch::x86_64::__cpuid_count;
 use std::collections::HashSet;
 use std::ffi::CStr;

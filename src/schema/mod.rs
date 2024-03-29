@@ -116,11 +116,13 @@ mod tests {
     use crate::schema::microarchitecture::MicroarchitecturesSchema;
 
     #[test]
+    #[ignore]
     fn show_microarchitecture_json() {
         println!("{:#?}", MicroarchitecturesSchema::schema());
     }
 
     #[test]
+    #[ignore]
     fn show_cpuid_json() {
         println!("{:#?}", CpuIdSchema::schema());
     }
