@@ -1,3 +1,4 @@
+use crate::cpu::detect::target_architecture_uname;
 use crate::schema::{Compiler, CompilerSet};
 use itertools::Itertools;
 use std::collections::{HashMap, HashSet};
@@ -243,14 +244,11 @@ fn known_microarchitectures() -> HashMap<String, Arc<Microarchitecture>> {
         }
     }
 
-    let host_platform = match std::env::consts::ARCH {
-        "powerpc64" => "ppc64",
-        "powerpc64le" => "ppc64le",
-        arch => arch,
-    };
-    known_targets
-        .entry(host_platform.to_string())
-        .or_insert_with(|| Arc::new(Microarchitecture::generic(host_platform)));
+    if let Ok(host_platform) = target_architecture_uname() {
+        known_targets
+            .entry(host_platform.to_string())
+            .or_insert_with(|| Arc::new(Microarchitecture::generic(&host_platform)));
+    }
 
     known_targets
 }

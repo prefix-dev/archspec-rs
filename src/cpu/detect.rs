@@ -22,7 +22,7 @@ const fn target_architecture_compiler() -> &'static str {
 
 /// Returns the architecture of the host machine by querying uname.
 #[cfg(not(target_os = "windows"))]
-fn target_architecture_uname() -> std::io::Result<String> {
+pub(crate) fn target_architecture_uname() -> std::io::Result<String> {
     use std::ffi::CStr;
     use std::mem::MaybeUninit;
 
@@ -39,8 +39,8 @@ fn target_architecture_uname() -> std::io::Result<String> {
 }
 
 #[cfg(target_os = "windows")]
-fn target_architecture_uname() -> std::io::Result<String> {
-    unimplemented!("uname is not implemented for Windows")
+pub(crate) fn target_architecture_uname() -> std::io::Result<String> {
+    Ok(target_architecture_compiler().to_string())
 }
 
 pub(crate) struct ProcCpuInfo {
@@ -174,13 +174,6 @@ fn detect_linux(arch: &str, cpu_info: &ProcCpuInfo) -> Microarchitecture {
         }
         _ => Microarchitecture::generic(arch),
     }
-}
-
-#[cfg(target_os = "linux")]
-fn detect() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
-    let arch = target_architecture_uname().map_err(|_| UnsupportedMicroarchitecture)?;
-    let cpu_info = ProcCpuInfo::from_proc_info().map_err(|_| UnsupportedMicroarchitecture)?;
-    Ok(detect_linux(&arch, &cpu_info))
 }
 
 pub(crate) trait SysCtlProvider {
@@ -371,11 +364,12 @@ impl<S: SysCtlProvider, C: CpuIdProvider> TargetDetector<S, C> {
         // Detect the architecture based on the operating system.
         let detected_arch = match os {
             "linux" => {
-                let cpu_info = self
-                    .cpu_info
-                    .or_else(|| ProcCpuInfo::from_proc_info().ok())
-                    .ok_or(UnsupportedMicroarchitecture)?;
-                detect_linux(target_arch, &cpu_info)
+                if let Some(cpu_info) = self.cpu_info.or_else(|| ProcCpuInfo::from_proc_info().ok())
+                {
+                    detect_linux(target_arch, &cpu_info)
+                } else {
+                    Microarchitecture::generic(target_arch)
+                }
             }
             "macos" => detect_macos(target_arch, &self.sysctl_provider),
             "windows" => detect_windows(target_arch, &self.cpuid_provider)?,
