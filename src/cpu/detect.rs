@@ -166,8 +166,6 @@ fn detect() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
             .map(|v| v.to_string())
             .unwrap_or_default();
 
-        dbg!(&cpu_features, &cpu_leaf7_features, &vendor);
-
         let mut features = cpu_features
             .split_whitespace()
             .chain(cpu_leaf7_features.split_whitespace())
@@ -191,11 +189,6 @@ fn detect() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
             ..Microarchitecture::generic("")
         });
     }
-
-    dbg!(sysctl::Ctl::new("machdep.cpu.brand_string")
-        .and_then(|ctl| ctl.value())
-        .map(|v| v.to_string().to_lowercase())
-        .ok());
 
     let model = match sysctl::Ctl::new("machdep.cpu.brand_string")
         .and_then(|ctl| ctl.value())
