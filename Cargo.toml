@@ -12,3 +12,5 @@ lazy_static = "1.4"
 regex = "1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+itertools = "0.12"
+cfg-if = "1"
