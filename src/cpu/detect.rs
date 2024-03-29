@@ -8,7 +8,7 @@ fn detect() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
     cfg_if::cfg_if! {
         if #[cfg(target_arch = "x86_64")] {
             let cpuid = super::cpuid::CpuId::host();
-            return Ok(Microarchitecture {
+            Ok(Microarchitecture {
                 name: String::new(),
                 parents: vec![],
                 vendor: cpuid.vendor.clone(),
@@ -16,7 +16,7 @@ fn detect() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
                 compilers: Default::default(),
                 generation: 0,
                 ancestors: Default::default(),
-            });
+            })
         } else if #[cfg(target_arch = "aarch64")] {
             return Ok(Microarchitecture::generic("aarch64"));
         } else if #[cfg(target_arch = "powerpc64le")] {
@@ -166,6 +166,8 @@ fn detect() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
             .map(|v| v.to_string().to_lowercase())
             .unwrap_or_default();
 
+        dbg!(&cpu_features, &cpu_leaf7_features, &vendor);
+
         let mut features = cpu_features
             .split_whitespace()
             .chain(cpu_leaf7_features.split_whitespace())
@@ -189,6 +191,11 @@ fn detect() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
             ..Microarchitecture::generic("")
         });
     }
+
+    dbg!(sysctl::Ctl::new("machdep.cpu.brand_string")
+        .and_then(|ctl| ctl.value())
+        .map(|v| v.to_string().to_lowercase())
+        .ok());
 
     let model = match sysctl::Ctl::new("machdep.cpu.brand_string")
         .and_then(|ctl| ctl.value())
@@ -307,9 +314,9 @@ fn compatible_microarchitectures_for_host(
     cfg_if::cfg_if! {
         if #[cfg(target_arch = "aarch64")] {
             compatible_microarchitectures_for_aarch64(detected_info, std::env::consts::OS == "macos")
-        } else if #[cfg(target_arch="powerpc64le")] {
+        } else if #[cfg(all(target_arch="powerpc64", target_endian="little"))] {
             compatible_microarchitectures_for_ppc64(detected_info, true)
-        } else if #[cfg(target_arch="powerpc64")] {
+        } else if #[cfg(all(target_arch="powerpc64", target_endian="big"))] {
             compatible_microarchitectures_for_ppc64(detected_info, false)
         } else if #[cfg(target_arch="riscv64")] {
             compatible_microarchitectures_for_riscv64(detected_info)
