@@ -409,8 +409,6 @@ fn compatible_microarchitectures_for_riscv64(
 
 #[cfg(test)]
 mod tests {
-    use crate::cpu::Microarchitecture;
-
     #[test]
     fn check_host() {
         let host = super::host();
