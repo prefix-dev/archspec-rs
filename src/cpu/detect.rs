@@ -163,7 +163,7 @@ fn detect() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
             .unwrap_or_default();
         let vendor = sysctl::Ctl::new("machdep.cpu.vendor")
             .and_then(|ctl| ctl.value())
-            .map(|v| v.to_string().to_lowercase())
+            .map(|v| v.to_string())
             .unwrap_or_default();
 
         dbg!(&cpu_features, &cpu_leaf7_features, &vendor);
@@ -263,6 +263,26 @@ pub fn host() -> Result<Arc<Microarchitecture>, UnsupportedMicroarchitecture> {
         .clone())
 }
 
+fn compatible_microarchitectures_for_host(
+    detected_info: &Microarchitecture,
+) -> Vec<Arc<Microarchitecture>> {
+    cfg_if::cfg_if! {
+        if #[cfg(target_arch = "aarch64")] {
+            compatible_microarchitectures_for_aarch64(detected_info, std::env::consts::OS == "macos")
+        } else if #[cfg(all(target_arch="powerpc64", target_endian="little"))] {
+            compatible_microarchitectures_for_ppc64(detected_info, true)
+        } else if #[cfg(all(target_arch="powerpc64", target_endian="big"))] {
+            compatible_microarchitectures_for_ppc64(detected_info, false)
+        } else if #[cfg(target_arch="riscv64")] {
+            compatible_microarchitectures_for_riscv64(detected_info)
+        } else if #[cfg(target_arch="x86_64")] {
+            compatible_microarchitectures_for_x86_64(detected_info)
+        } else {
+            vec![]
+        }
+    }
+}
+
 #[allow(unused)]
 fn compatible_microarchitectures_for_aarch64(
     detected_info: &Microarchitecture,
@@ -291,9 +311,15 @@ fn compatible_microarchitectures_for_aarch64(
     targets
         .values()
         .filter(|target| {
+            // At the moment, it's not clear how to detect compatibility with a specific version of
+            // the architecture.
+            if target.vendor == "generic" && target.name != "aarch64" {
+                return false;
+            }
+
             // Must share the same architecture family and vendor.
             if arch_root.as_ref() != target.family()
-                || !(target.vendor == "generic" || target.vendor != detected_info.vendor)
+                || !(target.vendor == "generic" || target.vendor == detected_info.vendor)
             {
                 return false;
             }
@@ -306,26 +332,6 @@ fn compatible_microarchitectures_for_aarch64(
         })
         .cloned()
         .collect()
-}
-
-fn compatible_microarchitectures_for_host(
-    detected_info: &Microarchitecture,
-) -> Vec<Arc<Microarchitecture>> {
-    cfg_if::cfg_if! {
-        if #[cfg(target_arch = "aarch64")] {
-            compatible_microarchitectures_for_aarch64(detected_info, std::env::consts::OS == "macos")
-        } else if #[cfg(all(target_arch="powerpc64", target_endian="little"))] {
-            compatible_microarchitectures_for_ppc64(detected_info, true)
-        } else if #[cfg(all(target_arch="powerpc64", target_endian="big"))] {
-            compatible_microarchitectures_for_ppc64(detected_info, false)
-        } else if #[cfg(target_arch="riscv64")] {
-            compatible_microarchitectures_for_riscv64(detected_info)
-        } else if #[cfg(target_arch="x86_64")] {
-            compatible_microarchitectures_for_x86_64(detected_info)
-        } else {
-            vec![]
-        }
-    }
 }
 
 #[allow(unused)]
@@ -379,7 +385,6 @@ fn compatible_microarchitectures_for_x86_64(
 }
 
 #[allow(unused)]
-
 fn compatible_microarchitectures_for_riscv64(
     detected_info: &Microarchitecture,
 ) -> Vec<Arc<Microarchitecture>> {
@@ -404,6 +409,8 @@ fn compatible_microarchitectures_for_riscv64(
 
 #[cfg(test)]
 mod tests {
+    use crate::cpu::Microarchitecture;
+
     #[test]
     fn check_host() {
         let host = super::host();
