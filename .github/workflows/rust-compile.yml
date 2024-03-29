@@ -28,7 +28,7 @@ jobs:
       - run: cargo rustdoc --all-features -- -D warnings -W unreachable-pub
 
   format:
-    name: Format and Lint
+    name: Format
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -80,4 +80,4 @@ jobs:
 
       - name: "Cargo nextest"
         run: |
-          cargo nextest run --no-capture --status-level skip --failure-output immediate-final --no-fail-fast --final-status-level slow
+          cargo nextest run --no-capture --status-level skip --no-fail-fast --final-status-level slow
