@@ -59,7 +59,7 @@ impl CpuIdProvider for MachineCpuIdProvider {
             } else if #[cfg(target_arch = "x86")] {
                 unsafe { std::arch::x86::__cpuid_count(leaf, sub_leaf).into() }
             } else {
-                unimplemented!("Unsupported architecture for CPUID instruction")
+                unimplemented!("Unsupported architecture for CPUID instruction ({leaf} {sub_leaf})")
             }
         }
     }
