@@ -9,4 +9,5 @@
 //! [archspec.readthedocs.org](https://archspec.readthedocs.org) for additional context.
 
 pub mod cpu;
+mod cpuid;
 pub mod schema;

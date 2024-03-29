@@ -21,3 +21,6 @@ libc = "0.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 sysctl = "0.5"
+
+[dev-dependencies]
+rstest = "0.18.2"

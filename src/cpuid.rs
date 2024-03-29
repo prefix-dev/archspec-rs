@@ -1,10 +1,69 @@
 #![allow(dead_code)]
 
 use crate::schema::{CpuIdSchema, CpuRegister};
-use std::arch::x86_64::__cpuid_count;
 use std::collections::HashSet;
 use std::ffi::CStr;
-use std::sync::OnceLock;
+
+pub(crate) trait CpuIdProvider {
+    fn cpuid(&self, leaf: u32, sub_leaf: u32) -> CpuIdRegisters;
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct CpuIdRegisters {
+    /// EAX register.
+    pub eax: u32,
+    /// EBX register.
+    pub ebx: u32,
+    /// ECX register.
+    pub ecx: u32,
+    /// EDX register.
+    pub edx: u32,
+}
+
+#[cfg(target_arch = "x86_64")]
+impl From<std::arch::x86_64::CpuidResult> for CpuIdRegisters {
+    fn from(value: std::arch::x86_64::CpuidResult) -> Self {
+        Self {
+            eax: value.eax,
+            ebx: value.ebx,
+            ecx: value.ecx,
+            edx: value.edx,
+        }
+    }
+}
+
+#[cfg(target_arch = "x86")]
+impl From<std::arch::x86::CpuidResult> for CpuIdRegisters {
+    fn from(value: std::arch::x86::CpuidResult) -> Self {
+        Self {
+            eax: value.eax,
+            ebx: value.ebx,
+            ecx: value.ecx,
+            edx: value.edx,
+        }
+    }
+}
+
+/// Default implementation of the `CpuidProvider` trait. This implementation uses the
+/// [`__cpuid_count`] intrinsic to read actual CPUID information.
+///
+/// This implementation is only available on x86 and x86_64 architectures.
+#[derive(Default)]
+pub(crate) struct MachineCpuIdProvider {}
+
+impl CpuIdProvider for MachineCpuIdProvider {
+    fn cpuid(&self, leaf: u32, sub_leaf: u32) -> CpuIdRegisters {
+        cfg_if::cfg_if! {
+            if #[cfg(target_arch = "x86_64")] {
+                unsafe { std::arch::x86_64::__cpuid_count(leaf, sub_leaf).into() }
+            } else if #[cfg(target_arch = "x86")] {
+                unsafe { std::arch::x86::__cpuid_count(leaf, sub_leaf).into() }
+            } else {
+                unimplemented!("Unsupported architecture for CPUID instruction")
+            }
+        }
+    }
+}
 
 #[derive(Debug)]
 pub(crate) struct CpuId {
@@ -19,23 +78,21 @@ pub(crate) struct CpuId {
 }
 
 impl CpuId {
-    fn detect() -> Self {
+    pub fn detect<P: CpuIdProvider>(provider: &P) -> Self {
         let schema = CpuIdSchema::schema();
 
         // Read the vendor information
-        let registers = unsafe { __cpuid_count(schema.vendor.input.eax, schema.vendor.input.ecx) };
+        let registers = provider.cpuid(schema.vendor.input.eax, schema.vendor.input.ecx);
         let highest_basic_support = registers.eax;
         let vendor_bytes: [u8; 12] =
             unsafe { std::mem::transmute([registers.ebx, registers.edx, registers.ecx]) };
         let vendor = String::from_utf8_lossy(&vendor_bytes).into_owned();
 
         // Read the highest_extension_support
-        let registers = unsafe {
-            __cpuid_count(
-                schema.highest_extension_support.input.eax,
-                schema.highest_extension_support.input.ecx,
-            )
-        };
+        let registers = provider.cpuid(
+            schema.highest_extension_support.input.eax,
+            schema.highest_extension_support.input.ecx,
+        );
         let highest_extension_support = registers.eax;
 
         // Read feature flags
@@ -49,7 +106,7 @@ impl CpuId {
             .iter()
             .filter(|flags| flags.input.eax <= highest_extension_support);
         for flags in supported_flags.chain(supported_extensions) {
-            let registers = unsafe { __cpuid_count(flags.input.eax, flags.input.ecx) };
+            let registers = provider.cpuid(flags.input.eax, flags.input.ecx);
             for bits in &flags.bits {
                 let register = match bits.register {
                     CpuRegister::Eax => registers.eax,
@@ -65,13 +122,11 @@ impl CpuId {
 
         // Read brand name if supported.
         let brand = if highest_extension_support >= 0x80000004 {
-            let registers = unsafe {
-                (
-                    __cpuid_count(0x80000002, 0),
-                    __cpuid_count(0x80000003, 0),
-                    __cpuid_count(0x80000004, 0),
-                )
-            };
+            let registers = (
+                provider.cpuid(0x80000002, 0),
+                provider.cpuid(0x80000003, 0),
+                provider.cpuid(0x80000004, 0),
+            );
 
             let vendor_bytes: [u8; 48] = unsafe {
                 std::mem::transmute([
@@ -103,11 +158,5 @@ impl CpuId {
             features,
             brand,
         }
-    }
-
-    /// Returns the CPUID information for the host CPU.
-    pub fn host() -> &'static Self {
-        static CPUID: OnceLock<CpuId> = OnceLock::new();
-        CPUID.get_or_init(CpuId::detect)
     }
 }
