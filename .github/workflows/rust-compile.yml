@@ -1,0 +1,83 @@
+on:
+  push:
+    branches:
+      - "main"
+  pull_request:
+
+name: Rust
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUST_LOG: info
+  RUST_BACKTRACE: 1
+  RUSTFLAGS: "-D warnings"
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check-rustdoc-links:
+    name: Check intra-doc links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - run: cargo rustdoc --all-features -- -D warnings -W unreachable-pub
+
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy, rustfmt
+      - name: Run rustfmt
+        uses: actions-rust-lang/rustfmt@v1
+
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    needs: [ format ]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: "Linux-x86_64",       target: x86_64-unknown-linux-musl,  os: ubuntu-20.04 }
+          - { name: "Linux-aarch64",      target: aarch64-unknown-linux-musl, os: ubuntu-latest }
+          - { name: "Linux-powerpc64le",  target: powerpc64le-unknown-linux-gnu, os: ubuntu-latest }
+          - { name: "Linux-powerpc64",    target: powerpc64-unknown-linux-gnu, os: ubuntu-latest }
+          - { name: "Linux-riscv64gc",    target: riscv64gc-unknown-linux-gnu, os: ubuntu-latest }
+
+          - { name: "macOS",              target: x86_64-apple-darwin,        os: macOS-latest }
+          - { name: "macOS-arm",          target: aarch64-apple-darwin,       os: macOS-14 }
+
+          - { name: "Windows-x86_64",     target: x86_64-pc-windows-msvc,     os: windows-latest }
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: taiki-e/setup-cross-toolchain-action@v1
+        with:
+          target: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run clippy
+        run: cargo clippy
+
+      - name: "Install cargo nextest"
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - name: "Cargo nextest"
+        run: |
+          cargo nextest run --no-capture --status-level skip --no-fail-fast --final-status-level slow

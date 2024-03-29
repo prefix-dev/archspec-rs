@@ -1,10 +1,8 @@
-mod alias;
 mod detect;
 mod microarchitecture;
-mod schema;
+
+#[cfg(target_os = "windows")]
+mod cpuid;
 
 pub use detect::host;
-pub use microarchitecture::{
-    generic_microarchitecture, version_components, Microarchitecture, UnsupportedMicroarchitecture,
-    TARGETS,
-};
+pub use microarchitecture::{Microarchitecture, UnsupportedMicroarchitecture};

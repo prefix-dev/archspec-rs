@@ -8,7 +8,5 @@
 //! Built documentation for the Python library can be found at
 //! [archspec.readthedocs.org](https://archspec.readthedocs.org) for additional context.
 
-#[macro_use]
-extern crate lazy_static;
-
 pub mod cpu;
+pub mod schema;

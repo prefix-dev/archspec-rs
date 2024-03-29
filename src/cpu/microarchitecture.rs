@@ -1,15 +1,53 @@
-use super::schema::{Compiler, CompilerSet};
+use crate::schema::{Compiler, CompilerSet};
+use itertools::Itertools;
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::fmt::{Debug, Formatter};
+use std::iter;
+use std::sync::{Arc, OnceLock};
 
-#[derive(Debug, Eq, PartialEq)]
 pub struct Microarchitecture {
-    name: String,
-    parents: Vec<Arc<Microarchitecture>>,
-    vendor: String,
-    features: HashSet<String>,
-    compilers: HashMap<String, Vec<Compiler>>,
-    generation: usize,
+    pub(crate) name: String,
+    pub(crate) parents: Vec<Arc<Microarchitecture>>,
+    pub(crate) vendor: String,
+    pub(crate) features: HashSet<String>,
+    pub(crate) compilers: HashMap<String, Vec<Compiler>>,
+    pub(crate) generation: usize,
+
+    // Not used in comparison
+    pub(crate) ancestors: OnceLock<Vec<Arc<Microarchitecture>>>,
+}
+
+impl PartialEq<Self> for Microarchitecture {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+            && self.vendor == other.vendor
+            && self.features == other.features
+            && self.parents == other.parents
+            && self.compilers == other.compilers
+            && self.generation == other.generation
+    }
+}
+
+impl Eq for Microarchitecture {}
+
+impl Debug for Microarchitecture {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Microarchitecture")
+            .field("name", &self.name)
+            .field(
+                "ancestors",
+                &self
+                    .ancestors()
+                    .iter()
+                    .map(|arch| arch.name.as_str())
+                    .collect_vec(),
+            )
+            .field("vendor", &self.vendor)
+            .field("features", &self.all_features())
+            .field("compilers", &self.compilers)
+            .field("generation", &self.generation)
+            .finish()
+    }
 }
 
 impl Microarchitecture {
@@ -38,20 +76,103 @@ impl Microarchitecture {
             features,
             compilers,
             generation,
+            ancestors: OnceLock::new(),
         }
     }
 
-    pub fn ancestors(&self) -> Vec<Arc<Microarchitecture>> {
-        let mut v = self.parents.clone();
-        for parent in &self.parents {
-            let new_ancestors = parent
-                .ancestors()
-                .into_iter()
-                .filter(|a| v.contains(a))
-                .collect::<Vec<_>>();
-            v.extend(new_ancestors);
+    /// Constructs a new generic micro architecture
+    pub(crate) fn generic(name: &str) -> Microarchitecture {
+        Microarchitecture::new(
+            name.to_string(),
+            vec![],
+            "generic".to_string(),
+            HashSet::new(),
+            HashMap::new(),
+        )
+    }
+
+    /// Returns all the known micro architectures.
+    pub fn known_targets() -> &'static HashMap<String, Arc<Microarchitecture>> {
+        static KNOWN_TARGETS: std::sync::OnceLock<HashMap<String, Arc<Microarchitecture>>> =
+            std::sync::OnceLock::new();
+        KNOWN_TARGETS.get_or_init(known_microarchitectures)
+    }
+
+    /// Returns all the ancestors of this micro architecture.
+    pub fn ancestors(&self) -> &[Arc<Microarchitecture>] {
+        self.ancestors.get_or_init(|| {
+            let mut v = self.parents.clone();
+            for parent in &self.parents {
+                let new_ancestors = parent
+                    .ancestors()
+                    .iter()
+                    .filter(|a| !v.contains(a))
+                    .cloned()
+                    .collect_vec();
+                v.extend(new_ancestors);
+            }
+            v
+        })
+    }
+
+    /// Returns true if the given micro architecture is an ancestor of this micro architecture.
+    pub fn decendent_of(&self, parent: &Microarchitecture) -> bool {
+        for p in self.parents.iter() {
+            if p.as_ref() == parent || p.decendent_of(parent) {
+                return true;
+            }
         }
-        v
+        false
+    }
+
+    /// Returns true if this micro architecture is a strict superset of the other.
+    ///
+    /// If a micro architecture is a strict superset of another, it means that it has all the
+    /// features of the other micro architecture, and more.
+    pub fn is_strict_superset(&self, other: &Microarchitecture) -> bool {
+        self.is_superset(other) && self.name != other.name
+    }
+
+    /// Returns true if this micro architecture is a superset of the other.
+    ///
+    /// This means that the current micro architecture has at least all the features of the other
+    /// micro architecture.
+    fn is_superset(&self, other: &Microarchitecture) -> bool {
+        let a = self.node_set();
+        let b = other.node_set();
+        a.is_superset(&b)
+    }
+
+    /// Returns the names of all the ancestors, including the current micro architecture name.
+    ///
+    /// This effectively returns all the nodes in the graph of micro architectures that are
+    /// reachable from the current node. This is useful for comparing two micro architectures.
+    ///
+    /// See also [`Self::is_strict_superset`].
+    fn node_set(&self) -> HashSet<&str> {
+        iter::once(self.name.as_str())
+            .chain(self.ancestors().iter().map(|a| a.name.as_str()))
+            .collect()
+    }
+
+    /// Returns the architecture root, the first parent architecture that does not have a
+    /// defined parent.
+    ///
+    /// It is assumed that all architectures have a single root.
+    pub fn family(&self) -> &Self {
+        match self.parents.first() {
+            Some(parent) => parent.family(),
+            None => self,
+        }
+    }
+
+    /// Returns all features supported by this architecture.
+    pub fn all_features(&self) -> HashSet<String> {
+        let mut features = self.features.clone();
+        for parent in &self.parents {
+            features.extend(parent.all_features());
+        }
+        features
     }
 }
 
@@ -60,11 +181,11 @@ pub struct UnsupportedMicroarchitecture;
 
 fn known_microarchitectures() -> HashMap<String, Arc<Microarchitecture>> {
     let mut known_targets: HashMap<String, Arc<Microarchitecture>> = HashMap::new();
-    let schema = &super::schema::TARGETS_JSON;
+    let schema = crate::schema::MicroarchitecturesSchema::schema();
 
     fn fill_target_from_map(
         name: &str,
-        schema: &super::schema::Schema,
+        schema: &crate::schema::MicroarchitecturesSchema,
         targets: &mut HashMap<String, Arc<Microarchitecture>>,
     ) {
         let data = &schema.microarchitectures;
@@ -100,7 +221,7 @@ fn known_microarchitectures() -> HashMap<String, Arc<Microarchitecture>> {
                     })
                     .collect()
             })
-            .unwrap_or_else(HashMap::new);
+            .unwrap_or_default();
         let generation = values.generation.unwrap_or(0);
 
         targets.insert(
@@ -114,7 +235,7 @@ fn known_microarchitectures() -> HashMap<String, Arc<Microarchitecture>> {
                 generation,
             )),
         );
-    };
+    }
 
     for name in schema.microarchitectures.keys() {
         if !known_targets.contains_key(name) {
@@ -122,48 +243,14 @@ fn known_microarchitectures() -> HashMap<String, Arc<Microarchitecture>> {
         }
     }
 
-    let host_platform = uname::uname().unwrap().machine;
-    let generic_ma = generic_microarchitecture(&host_platform).into();
-    known_targets.entry(host_platform).or_insert(generic_ma);
+    let host_platform = match std::env::consts::ARCH {
+        "powerpc64" => "ppc64",
+        "powerpc64le" => "ppc64le",
+        arch => arch,
+    };
+    known_targets
+        .entry(host_platform.to_string())
+        .or_insert_with(|| Arc::new(Microarchitecture::generic(host_platform)));
 
     known_targets
-}
-
-pub fn generic_microarchitecture(name: &str) -> Microarchitecture {
-    Microarchitecture::new(
-        name.to_string(),
-        vec![],
-        "generic".to_string(),
-        HashSet::new(),
-        HashMap::new(),
-    )
-}
-
-pub fn version_components(version: &str) -> Option<(String, String)> {
-    let re = regex::Regex::new(r"([\d.]*)(-?)(.*)").unwrap();
-    let caps = re.captures(version)?;
-    let version_number = caps.get(1)?.as_str().to_string();
-    let suffix = caps.get(3)?.as_str().to_string();
-
-    Some((version_number, suffix))
-}
-
-lazy_static! {
-    pub static ref TARGETS: HashMap<String, Arc<Microarchitecture>> =
-        { known_microarchitectures() };
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn version_components() {
-        fn ref_tup(t: &(String, String)) -> (&str, &str) {
-            (&t.0, &t.1)
-        }
-
-        use super::version_components;
-        for (version, truth) in &[("1.2.3-hi.ho", Some(("1.2.3", "hi.ho")))] {
-            assert_eq!(version_components(version).as_ref().map(ref_tup), *truth);
-        }
-    }
 }

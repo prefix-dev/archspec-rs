@@ -1,50 +1,403 @@
 use super::microarchitecture::{Microarchitecture, UnsupportedMicroarchitecture};
-use std::collections::HashMap;
+use itertools::Itertools;
+use std::cmp::Ordering;
 use std::sync::Arc;
 
-/// A type for a mapping of the information for the current host.
-struct RawInfoMap;
-
-/// Returns a map with information on the CPU of the current host.
-fn raw_info_map() -> RawInfoMap {
-    RawInfoMap
-}
-
-type CompatibilityCheckBox = Box<dyn Fn(&RawInfoMap, &str) -> bool + Send + Sync>;
-
-lazy_static! {
-    static ref COMPATIBILITY_CHECKS: HashMap<String, CompatibilityCheckBox> = { HashMap::new() };
-}
-
-/// Returns an unordered sequence of known micro-architectures that are
-/// compatible with the info map passed as argument.
-fn compatible_microarchitectures(info_map: RawInfoMap) -> Vec<Arc<Microarchitecture>> {
-    let architecture_family = uname::uname().unwrap().machine;
-    if let Some(tester) = COMPATIBILITY_CHECKS.get(&architecture_family) {
-        super::microarchitecture::TARGETS
-            .iter()
-            .filter_map(|(name, march)| {
-                if tester(&info_map, name) {
-                    Some(march.clone())
-                } else {
-                    None
-                }
+#[cfg(target_os = "windows")]
+fn detect() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
+    cfg_if::cfg_if! {
+        if #[cfg(target_arch = "x86_64")] {
+            let cpuid = super::cpuid::CpuId::host();
+            Ok(Microarchitecture {
+                name: String::new(),
+                parents: vec![],
+                vendor: cpuid.vendor.clone(),
+                features: cpuid.features.clone(),
+                compilers: Default::default(),
+                generation: 0,
+                ancestors: Default::default(),
             })
-            .collect()
-    } else {
-        vec![super::microarchitecture::generic_microarchitecture(&architecture_family).into()]
+        } else if #[cfg(target_arch = "aarch64")] {
+            return Ok(Microarchitecture::generic("aarch64"));
+        } else if #[cfg(target_arch = "powerpc64le")] {
+            return Ok(Microarchitecture::generic("ppc64le"));
+        } else if #[cfg(target_arch = "powerpc64")] {
+            return Ok(Microarchitecture::generic("ppc64"));
+        } else if #[cfg(target_arch = "riscv64")] {
+            return Ok(Microarchitecture::generic("riscv64"));
+        } else {
+            return Err(UnsupportedMicroarchitecture);
+        }
     }
+}
+
+#[cfg(not(any(target_os = "windows")))]
+fn uname_machine() -> std::io::Result<String> {
+    use std::ffi::CStr;
+    use std::mem::MaybeUninit;
+
+    let mut utsname = MaybeUninit::zeroed();
+    let r = unsafe { libc::uname(utsname.as_mut_ptr()) };
+    if r != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+
+    let utsname = unsafe { utsname.assume_init() };
+    let machine = unsafe { CStr::from_ptr(utsname.machine.as_ptr()) };
+    Ok(machine.to_string_lossy().into_owned())
+}
+
+#[cfg(target_os = "linux")]
+fn detect() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
+    use std::io::{BufRead, BufReader};
+
+    // Read the CPU information from /proc/cpuinfo
+    let mut data = std::collections::HashMap::new();
+    let lines = std::fs::File::open("/proc/cpuinfo")
+        .map(BufReader::new)
+        .map_err(|_| UnsupportedMicroarchitecture)?
+        .lines();
+    for line in lines {
+        let Ok(line) = line else {
+            continue;
+        };
+        let Some((key, value)) = line.split_once(':') else {
+            // If there is no seperator and info was already populated, break because we are on a
+            // blank line seperating CPUs.
+            if !data.is_empty() {
+                break;
+            }
+            continue;
+        };
+        data.insert(key.trim().to_string(), value.trim().to_string());
+    }
+
+    let architecture = uname_machine().map_err(|_| UnsupportedMicroarchitecture)?;
+    if architecture == "x86_64" {
+        return Ok(Microarchitecture {
+            vendor: data
+                .remove("vendor_id")
+                .unwrap_or_else(|| String::from("generic")),
+            features: data
+                .remove("flags")
+                .unwrap_or_default()
+                .split(' ')
+                .map(|s| s.to_string())
+                .collect(),
+            ..Microarchitecture::generic("")
+        });
+    }
+
+    if architecture == "aarch64" {
+        let vendor = if let Some(implementer) = data.get("CPU implementer") {
+            // Mapping numeric codes to vendor (ARM). This list is a merge from
+            // different sources:
+            //
+            // https://github.com/karelzak/util-linux/blob/master/sys-utils/lscpu-arm.c
+            // https://developer.arm.com/docs/ddi0487/latest/arm-architecture-reference-manual-armv8-for-armv8-a-architecture-profile
+            // https://github.com/gcc-mirror/gcc/blob/master/gcc/config/aarch64/aarch64-cores.def
+            // https://patchwork.kernel.org/patch/10524949/
+            crate::schema::MicroarchitecturesSchema::schema()
+                .conversions
+                .arm_vendors
+                .get(implementer)
+                .cloned()
+                .unwrap_or_else(|| "generic".to_string())
+        } else {
+            String::from("generic")
+        };
+
+        return Ok(Microarchitecture {
+            vendor,
+            features: data
+                .remove("Features")
+                .unwrap_or_default()
+                .split(' ')
+                .map(|s| s.to_string())
+                .collect(),
+            ..Microarchitecture::generic("")
+        });
+    }
+
+    if architecture == "ppc64" || architecture == "ppc64le" {
+        let cpu = data.remove("cpu").unwrap_or_default();
+        let generation = cpu
+            .strip_prefix("POWER")
+            .and_then(|rest| rest.parse().ok())
+            .unwrap_or(0);
+        return Ok(Microarchitecture {
+            generation,
+            ..Microarchitecture::generic("")
+        });
+    }
+
+    if architecture == "riscv64" {
+        let uarch = match data.get("uarch").map(String::as_str) {
+            Some("sifive,u74-mc") => "u74mc",
+            Some(uarch) => uarch,
+            None => "riscv64",
+        };
+        return Ok(Microarchitecture::generic(uarch));
+    }
+
+    Ok(Microarchitecture::generic(&architecture))
+}
+
+#[cfg(target_os = "macos")]
+fn detect() -> Result<Microarchitecture, UnsupportedMicroarchitecture> {
+    use std::collections::HashSet;
+    use sysctl::Sysctl;
+
+    let Ok(architecture) = uname_machine() else {
+        return Err(UnsupportedMicroarchitecture);
+    };
+
+    if architecture == "x86_64" {
+        let cpu_features = sysctl::Ctl::new("machdep.cpu.features")
+            .and_then(|ctl| ctl.value())
+            .map(|v| v.to_string().to_lowercase())
+            .unwrap_or_default();
+        let cpu_leaf7_features = sysctl::Ctl::new("machdep.cpu.leaf7_features")
+            .and_then(|ctl| ctl.value())
+            .map(|v| v.to_string().to_lowercase())
+            .unwrap_or_default();
+        let vendor = sysctl::Ctl::new("machdep.cpu.vendor")
+            .and_then(|ctl| ctl.value())
+            .map(|v| v.to_string())
+            .unwrap_or_default();
+
+        let mut features = cpu_features
+            .split_whitespace()
+            .chain(cpu_leaf7_features.split_whitespace())
+            .map(|s| s.to_string())
+            .collect::<HashSet<String>>();
+
+        // Flags detected on Darwin turned to their linux counterpart.
+        for (darwin_flag, linux_flag) in crate::schema::MicroarchitecturesSchema::schema()
+            .conversions
+            .darwin_flags
+            .iter()
+        {
+            if features.contains(darwin_flag) {
+                features.extend(linux_flag.split_whitespace().map(|s| s.to_string()))
+            }
+        }
+
+        return Ok(Microarchitecture {
+            vendor,
+            features,
+            ..Microarchitecture::generic("")
+        });
+    }
+
+    let model = match sysctl::Ctl::new("machdep.cpu.brand_string")
+        .and_then(|ctl| ctl.value())
+        .map(|v| v.to_string().to_lowercase())
+        .ok()
+    {
+        Some(model) if model.contains("m2") => String::from("m2"),
+        Some(model) if model.contains("m1") => String::from("m1"),
+        Some(model) if model.contains("apple") => String::from("m1"),
+        _ => String::from("unknown"),
+    };
+
+    Ok(Microarchitecture {
+        vendor: String::from("Apple"),
+        ..Microarchitecture::generic(&model)
+    })
+}
+
+fn compare_microarchitectures(a: &Microarchitecture, b: &Microarchitecture) -> Ordering {
+    let ancestors_a = a.ancestors().len();
+    let ancestors_b = b.ancestors().len();
+
+    let features_a = a.features.len();
+    let features_b = b.features.len();
+
+    ancestors_a
+        .cmp(&ancestors_b)
+        .then(features_a.cmp(&features_b))
 }
 
 /// Detects the host micro-architecture and returns it.
 pub fn host() -> Result<Arc<Microarchitecture>, UnsupportedMicroarchitecture> {
-    let info = raw_info_map();
-    let candidates = compatible_microarchitectures(info);
-    candidates
+    // Detect the host micro-architecture.
+    let detected_info = detect()?;
+
+    // Get a list of possible candidates that are compatible with the hosts micro-architecture.
+    let compatible_targets = compatible_microarchitectures_for_host(&detected_info);
+
+    // Find the best generic candidates
+    let Some(best_generic_candidate) = compatible_targets
         .iter()
-        .min_by_key(|cand| cand.ancestors().len())
+        .filter(|target| target.vendor == "generic")
+        .sorted_by(|a, b| compare_microarchitectures(a, b))
+        .last()
+    else {
+        // If there is no matching generic candidate then
+        return Err(UnsupportedMicroarchitecture);
+    };
+
+    // Filter the candidates to be descendant of the best generic candidate. This is to avoid that
+    // the lack of a niche feature that can be disabled from e.g. BIOS prevents detection of a
+    // reasonably performant architecture
+    let best_candidates = compatible_targets
+        .iter()
+        .filter(|target| target.is_strict_superset(best_generic_candidate))
+        .collect_vec();
+
+    // Resort the matching candidates and fall back to the best generic candidate if there is no
+    // matching non-generic candidate.
+    Ok(best_candidates
+        .into_iter()
+        .sorted_by(|a, b| compare_microarchitectures(a, b))
+        .last()
+        .unwrap_or(best_generic_candidate)
+        .clone())
+}
+
+fn compatible_microarchitectures_for_host(
+    detected_info: &Microarchitecture,
+) -> Vec<Arc<Microarchitecture>> {
+    cfg_if::cfg_if! {
+        if #[cfg(target_arch = "aarch64")] {
+            compatible_microarchitectures_for_aarch64(detected_info, std::env::consts::OS == "macos")
+        } else if #[cfg(all(target_arch="powerpc64", target_endian="little"))] {
+            compatible_microarchitectures_for_ppc64(detected_info, true)
+        } else if #[cfg(all(target_arch="powerpc64", target_endian="big"))] {
+            compatible_microarchitectures_for_ppc64(detected_info, false)
+        } else if #[cfg(target_arch="riscv64")] {
+            compatible_microarchitectures_for_riscv64(detected_info)
+        } else if #[cfg(target_arch="x86_64")] {
+            compatible_microarchitectures_for_x86_64(detected_info)
+        } else {
+            vec![]
+        }
+    }
+}
+
+#[allow(unused)]
+fn compatible_microarchitectures_for_aarch64(
+    detected_info: &Microarchitecture,
+    is_macos: bool,
+) -> Vec<Arc<Microarchitecture>> {
+    let targets = Microarchitecture::known_targets();
+
+    // Get the root micro-architecture for aarch64.
+    let Some(arch_root) = targets.get("aarch64") else {
+        return vec![];
+    };
+
+    // On macOS it seems impossible to get all the CPU features with sysctl info, but for
+    // ARM we can get the exact model
+    let macos_model = if is_macos {
+        match targets.get(&detected_info.name) {
+            None => return vec![],
+            model => model,
+        }
+    } else {
+        None
+    };
+
+    // Find all targets that are decendants of the root architecture and are compatibile with the
+    // detected micro-architecture.
+    targets
+        .values()
+        .filter(|target| {
+            // At the moment, it's not clear how to detect compatibility with a specific version of
+            // the architecture.
+            if target.vendor == "generic" && target.name != "aarch64" {
+                return false;
+            }
+
+            // Must share the same architecture family and vendor.
+            if arch_root.as_ref() != target.family()
+                || !(target.vendor == "generic" || target.vendor == detected_info.vendor)
+            {
+                return false;
+            }
+
+            if let Some(macos_model) = macos_model {
+                return target.as_ref() == macos_model.as_ref() || macos_model.decendent_of(target);
+            } else {
+                target.features.is_subset(&detected_info.features)
+            }
+        })
         .cloned()
-        .ok_or(UnsupportedMicroarchitecture)
+        .collect()
+}
+
+#[allow(unused)]
+fn compatible_microarchitectures_for_ppc64(
+    detected_info: &Microarchitecture,
+    little_endian: bool,
+) -> Vec<Arc<Microarchitecture>> {
+    let targets = Microarchitecture::known_targets();
+
+    let root_arch = if little_endian { "ppc64le" } else { "ppc64" };
+
+    // Get the root micro-architecture.
+    let Some(arch_root) = targets.get(root_arch) else {
+        return vec![];
+    };
+
+    // Find all targets that are decendants of the root architecture and are compatibile with the
+    // detected micro-architecture.
+    targets
+        .values()
+        .filter(|target| {
+            (target.as_ref() == arch_root.as_ref() || target.decendent_of(arch_root))
+                && target.generation <= detected_info.generation
+        })
+        .cloned()
+        .collect()
+}
+
+#[allow(unused)]
+fn compatible_microarchitectures_for_x86_64(
+    detected_info: &Microarchitecture,
+) -> Vec<Arc<Microarchitecture>> {
+    let targets = Microarchitecture::known_targets();
+
+    // Get the root micro-architecture for x86_64.
+    let Some(arch_root) = targets.get("x86_64") else {
+        return vec![];
+    };
+
+    // Find all targets that are decendants of the root architecture and are compatibile with the
+    // detected micro-architecture.
+    targets
+        .values()
+        .filter(|target| {
+            (target.as_ref() == arch_root.as_ref() || target.decendent_of(arch_root))
+                && (target.vendor == detected_info.vendor || target.vendor == "generic")
+                && target.features.is_subset(&detected_info.features)
+        })
+        .cloned()
+        .collect()
+}
+
+#[allow(unused)]
+fn compatible_microarchitectures_for_riscv64(
+    detected_info: &Microarchitecture,
+) -> Vec<Arc<Microarchitecture>> {
+    let targets = Microarchitecture::known_targets();
+
+    // Get the root micro-architecture for riscv64.
+    let Some(arch_root) = targets.get("riscv64") else {
+        return vec![];
+    };
+
+    // Find all targets that are descendants of the root architecture and are compatible with the
+    // detected micro-architecture.
+    targets
+        .values()
+        .filter(|target| {
+            (target.as_ref() == arch_root.as_ref() || target.decendent_of(arch_root))
+                && (target.name == detected_info.name || target.vendor == "generic")
+        })
+        .cloned()
+        .collect()
 }
 
 #[cfg(test)]
@@ -52,7 +405,7 @@ mod tests {
     #[test]
     fn check_host() {
         let host = super::host();
-        eprintln!("{:?}", &host);
+        eprintln!("{:#?}", &host);
         host.expect("host() should return something");
     }
 }
