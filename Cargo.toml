@@ -2,6 +2,7 @@
 name = "archspec"
 version = "0.1.0"
 authors = ["Bas Zalmstra <bas@prefix.dev>", "Lars Viklund <zao@zao.se>"]
+description = "Provides standardized human-readable labels for aspects and capabilities of a system"
 license = "MIT OR Apache-2.0"
 edition = "2018"
 resolver = "2"
