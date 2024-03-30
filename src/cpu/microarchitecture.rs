@@ -82,7 +82,7 @@ impl Microarchitecture {
     }
 
     /// Constructs a new generic micro architecture
-    pub(crate) fn generic(name: &str) -> Microarchitecture {
+    pub fn generic(name: &str) -> Microarchitecture {
         Microarchitecture::new(
             name.to_string(),
             vec![],
@@ -90,6 +90,26 @@ impl Microarchitecture {
             HashSet::new(),
             HashMap::new(),
         )
+    }
+
+    /// Returns the name of the micro architecture.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns the vendor of the micro architecture
+    pub fn vendor(&self) -> &str {
+        &self.vendor
+    }
+
+    /// Returns the generation of the micro architecture.
+    /// Examples of architectures with a generation are:
+    /// - x86_64 = 0
+    /// - x86_64_v3 = 3
+    /// - power7 = 7
+    /// - power10 = 10
+    pub fn generation(&self) -> usize {
+        self.generation
     }
 
     /// Returns all the known micro architectures.
