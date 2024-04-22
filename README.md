@@ -1,4 +1,14 @@
-# archspec-rs
+<h1>
+  <a href="https://github.com/prefix-dev/archspec-rs/">
+    <picture>
+      <source srcset="https://github.com/prefix-dev/archspec-rs/assets/4995967/b7ecaccb-8421-46cb-926b-5f578a0f09fb" type="image/webp">
+      <source srcset="https://github.com/prefix-dev/archspec-rs/assets/4995967/7a12c724-ab7c-43b1-b44c-30a27020a49f" type="image/png">
+      <img src="https://github.com/prefix-dev/archspec-rs/assets/4995967/7a12c724-ab7c-43b1-b44c-30a27020a49f" alt="banner">
+    </picture>
+  </a>
+</h1>
+
+<h1 align="center">
 
 [![Crates.io][crates-badge]][crates-url]
 ![License][license-badge]
@@ -16,12 +26,18 @@
 [crates-badge]: https://img.shields.io/crates/v/archspec.svg?style=flat-square
 [crates-url]: https://crates.io/crates/archspec
 
+</h1>
+
+# archspec-rs
+
 An implementation of [archspec](https://github.com/archspec/archspec) in Rust.
 
 Archspec aims at providing a standard set of human-understandable labels for various aspects of a system architecture like CPU, network fabrics, etc. and APIs to detect, query and compare them.
 
 The original archspec project grew out of [Spack](https://spack.io/) and is currently under active development. 
-At present it supports APIs to detect and model compatibility relationships among different CPU microarchitectures.
+At present, it supports APIs to detect and model compatibility relationships among different CPU microarchitectures.
+
+Developed with ❤️ at [prefix.dev](https://prefix.dev).
 
 ## License
 
