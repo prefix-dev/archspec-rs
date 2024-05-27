@@ -72,7 +72,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Run clippy
-        run: cargo clippy
+        run: cargo clippy --all
 
       - name: "Install cargo nextest"
         uses: taiki-e/install-action@v2
@@ -81,4 +81,4 @@ jobs:
 
       - name: "Cargo nextest"
         run: |
-          cargo nextest run --no-capture --status-level skip --no-fail-fast --final-status-level slow
+          cargo nextest run --no-capture --status-level skip --no-fail-fast --final-status-level slow --all
