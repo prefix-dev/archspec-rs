@@ -1,0 +1,9 @@
+[package]
+name = "bin"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+archspec = { path = ".." }
+clap = { version = "4.5.4", features = ["derive"] }
