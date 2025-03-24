@@ -5,3 +5,7 @@ updates:
     # Check for updates every Monday
     schedule:
       interval: "weekly"
+  - package-ecosystem: "gitsubmodule"
+    directory: "json"
+    schedule:
+      interval: "weekly"
