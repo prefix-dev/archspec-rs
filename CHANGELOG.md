@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4](https://github.com/prefix-dev/archspec-rs/compare/archspec-v0.1.3...archspec-v0.1.4) - 2025-03-24
+
+### Other
+
+- bump archspec-json ([#11](https://github.com/prefix-dev/archspec-rs/pull/11))
+- update README ([#10](https://github.com/prefix-dev/archspec-rs/pull/10))
+
 ## [0.1.3](https://github.com/prefix-dev/archspec-rs/compare/v0.1.2...v0.1.3) - 2024-03-30
 
 ### Fixed
