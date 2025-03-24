@@ -469,7 +469,7 @@ fn compatible_microarchitectures_for_aarch64(
             }
 
             if let Some(macos_model) = macos_model {
-                return target.as_ref() == macos_model.as_ref() || macos_model.decendent_of(target);
+                target.as_ref() == macos_model.as_ref() || macos_model.decendent_of(target)
             } else {
                 target.features.is_subset(&detected_info.features)
             }
